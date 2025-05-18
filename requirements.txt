@@ -1,0 +1,6 @@
+pygame
+math
+os
+json
+tkinter
+filedialog
