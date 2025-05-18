@@ -1,11 +1,12 @@
 import pygame
 import math
 import copy
-import os # <-- إضافة جديدة لاستخدام مسارات الملفات
+import os 
+import json
+import tkinter as tk
+from tkinter import filedialog
 
-# --- (ثوابت وإعدادات Pygame) ---
-# --- (Constants and Pygame Setup) ---
-
+# --- ثوابت وإعدادات Pygame ---
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 700
 SIDEBAR_WIDTH = 150
@@ -15,39 +16,38 @@ MIN_PIXELS_PER_METER = 10
 MAX_PIXELS_PER_METER = 300
 ZOOM_FACTOR_STEP = 1.1
 
-# --- (الألوان) ---
-# --- (Colors) ---
+# --- الألوان ---
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
-BLUE = (0, 0, 255) # سيستخدم لخلفية الأزرار العادية
+BLUE = (0, 0, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 YELLOW = (255, 255, 0)
 DARK_GRAY = (50, 50, 50)
 DOOR_COLOR = (150, 75, 0)
 WINDOW_COLOR = (100, 150, 255)
-HIGHLIGHT_COLOR = (255, 165, 0) # لون تمييز الزر النشط
+HIGHLIGHT_COLOR = (255, 165, 0)
 INPUT_BOX_COLOR = (230, 230, 230)
 INPUT_BOX_ACTIVE_COLOR = (255, 255, 200)
-DELETE_COLOR = (200, 0, 0) # لون خلفية زر الحذف
+DELETE_COLOR = (200, 0, 0)
 GRID_COLOR = (230, 230, 230)
-RULER_COLOR = (0, 150, 150) # لون أداة المسطرة وأيقونتها
+RULER_COLOR = (0, 150, 150)
 
-# --- (متغيرات التراجع) ---
+# --- متغيرات التراجع ---
 history = []
 MAX_HISTORY_SIZE = 20
 
-# --- (الأدوات وعناصر واجهة المستخدم) ---
-TOOLS = ["WALL", "DOOR", "WINDOW", "DELETE", "MEASURE"]
+# --- الأدوات وعناصر واجهة المستخدم ---
+TOOLS = ["WALL", "DOOR", "WINDOW", "DELETE", "MEASURE", "SAVE"]
 TOOL_RECTS = []
 INPUT_RECTS = {}
 
-# --- (قيم افتراضية لحقول الإدخال) ---
+# --- قيم افتراضية لحقول الإدخال ---
 DEFAULT_DOOR_WIDTH_M_STR = "0.9"
 DEFAULT_WINDOW_WIDTH_M_STR = "1.2"
 
-# --- (تهيئة Pygame) ---
+# --- تهيئة Pygame ---
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("MEASURE")
@@ -56,64 +56,58 @@ small_font = pygame.font.Font(None, 18)
 input_font = pygame.font.Font(None, 22)
 clock = pygame.time.Clock()
 
-# --- (تحميل الأيقونات) ---                       # <-- قسم جديد
-# تأكد من أن ملفات الأيقونات موجودة في نفس مجلد الكود أو وفر المسار الصحيح
-# يجب أن تكون الأيقونات بحجم مناسب للأزرار (مثلاً 32x32 أو 48x48 بكسل)
-ICON_SIZE = (40, 40) # حجم الأيقونة المرغوب (يمكن تعديله)
+# --- تحميل الأيقونات ---
+ICON_SIZE = (40, 40)
 icons = {}
-try:
-    # دالة مساعدة لتحميل وتغيير حجم الأيقونة
-    def load_icon(filename):
-        try:
-            img = pygame.image.load(os.path.join(filename)).convert_alpha() # استخدم convert_alpha للشفافية
-            return pygame.transform.scale(img, ICON_SIZE)
-        except pygame.error as e:
-            print(f"خطأ في تحميل الأيقونة {filename}: {e}")
-            # إنشاء سطح فارغ كبديل إذا فشل التحميل
-            fallback_surface = pygame.Surface(ICON_SIZE, pygame.SRCALPHA) # سطح شفاف
-            fallback_surface.fill((0,0,0,0)) # تعبئة بالشفافية الكاملة
-            # يمكنك رسم شيء بسيط هنا للإشارة للخطأ
-            pygame.draw.rect(fallback_surface, RED, (0, 0, ICON_SIZE[0], ICON_SIZE[1]), 1)
-            pygame.draw.line(fallback_surface, RED, (0,0), ICON_SIZE, 1)
-            pygame.draw.line(fallback_surface, RED, (ICON_SIZE[0],0), (0, ICON_SIZE[1]), 1)
-            return fallback_surface
+def load_icon(filename):
+    try:
+        img = pygame.image.load(os.path.join(filename)).convert_alpha()
+        return pygame.transform.scale(img, ICON_SIZE)
+    except pygame.error as e:
+        print(f"خطأ في تحميل الأيقونة {filename}: {e}")
+        fallback_surface = pygame.Surface(ICON_SIZE, pygame.SRCALPHA)
+        fallback_surface.fill((0,0,0,0))
+        pygame.draw.rect(fallback_surface, RED, (0, 0, ICON_SIZE[0], ICON_SIZE[1]), 1)
+        pygame.draw.line(fallback_surface, RED, (0,0), ICON_SIZE, 1)
+        pygame.draw.line(fallback_surface, RED, (ICON_SIZE[0],0), (0, ICON_SIZE[1]), 1)
+        return fallback_surface
 
+try:
     icons["WALL"] = load_icon("wall_icon.png")
     icons["DOOR"] = load_icon("door_icon.png")
     icons["WINDOW"] = load_icon("window_icon.png")
     icons["DELETE"] = load_icon("delete_icon.png")
     icons["MEASURE"] = load_icon("measure_icon.png")
-
+    icons["SAVE"] = load_icon("save_icon.png")
 except Exception as e:
     print(f"حدث خطأ عام أثناء تحميل الأيقونات: {e}")
-    # يمكنك إيقاف البرنامج هنا إذا كانت الأيقونات ضرورية
-    # running = False
 
-# --- (متغيرات الحالة) ---
+# --- متغيرات الحالة ---
 running = True
 current_tool = None
 drawing = False
 start_pos_m = None
 elements = []
+measurements = []
 
-# --- (متغيرات حالة التكبير/التصغير والتحريك) ---
+# --- متغيرات التكبير/التصغير ---
 pixels_per_meter = INITIAL_PIXELS_PER_METER
 view_offset_x = 0
 view_offset_y = 0
 
-# --- (متغيرات حالة حقول الإدخال) ---
+# --- متغيرات حقول الإدخال ---
 active_input = None
 input_values = {
     'door': DEFAULT_DOOR_WIDTH_M_STR,
     'window': DEFAULT_WINDOW_WIDTH_M_STR
 }
 
-# --- (متغيرات حالة المسطرة) ---
+# --- متغيرات المسطرة ---
 ruler_point1_m = None
 ruler_point2_m = None
 ruler_snapped_point_m = None
 
-# --- (دوال تحويل الإحداثيات) ---
+# --- دوال التحويل ---
 def world_m_to_screen(world_m_pos):
     screen_x = round(world_m_pos[0] * pixels_per_meter + view_offset_x) + SIDEBAR_WIDTH
     screen_y = round(world_m_pos[1] * pixels_per_meter + view_offset_y)
@@ -131,11 +125,8 @@ def screen_to_world_m(screen_pos):
     world_my = (screen_pos[1] - view_offset_y) / pixels_per_meter
     return (world_mx, world_my)
 
-# --- (دوال مساعدة) ---
-
-# ***** تم تعديل هذه الدالة بشكل كبير *****
+# --- دوال مساعدة ---
 def draw_sidebar(selected_tool, current_input_values, active_input_field):
-    """ترسم الشريط الجانبي مع الأيقونات وحقول الإدخال."""
     sidebar_area = pygame.Rect(0, 0, SIDEBAR_WIDTH, SCREEN_HEIGHT)
     pygame.draw.rect(screen, GRAY, sidebar_area)
 
@@ -143,51 +134,43 @@ def draw_sidebar(selected_tool, current_input_values, active_input_field):
     INPUT_RECTS.clear()
 
     y_offset = 20
-    button_height = 55 # زيادة ارتفاع الزر لاستيعاب الأيقونة والنص (اختياري)
+    button_height = 55
     input_height = 25
-    button_padding = 15 # زيادة المسافة بين الأزرار
+    button_padding = 15
 
-    # عرض مقياس الرسم وتعليمات التكبير/المسطرة (كما كان)
     scale_text = small_font.render(f"Scale: {pixels_per_meter:.1f} px/m", True, BLACK)
     screen.blit(scale_text, (10, SCREEN_HEIGHT - 60))
     zoom_instr_text = small_font.render("Wheel to zoom.", True, BLACK)
     screen.blit(zoom_instr_text, (10, SCREEN_HEIGHT - 40))
-    ruler_instr_text = small_font.render("Select tool above.", True, BLACK) # نص عام
+    ruler_instr_text = small_font.render("Select tool above.", True, BLACK)
     screen.blit(ruler_instr_text, (10, SCREEN_HEIGHT - 20))
 
-
-    # رسم أزرار الأدوات باستخدام الأيقونات
     for tool in TOOLS:
         button_rect = pygame.Rect(10, y_offset, SIDEBAR_WIDTH - 20, button_height)
         TOOL_RECTS.append(button_rect)
 
-        # تحديد لون خلفية الزر
         bg_color = BLUE
         if tool == selected_tool:
             bg_color = HIGHLIGHT_COLOR
         elif tool == "DELETE":
             bg_color = DELETE_COLOR
         elif tool == "MEASURE":
-             bg_color = RULER_COLOR # استخدام لون المسطرة لخلفية زرها
+             bg_color = RULER_COLOR
+        elif tool == "SAVE":
+             bg_color = GREEN
 
-        pygame.draw.rect(screen, bg_color, button_rect, border_radius=5) # رسم خلفية الزر (مع حواف مستديرة اختيارية)
-
-        # الحصول على الأيقونة الخاصة بهذه الأداة
-        icon_surface = icons.get(tool) # احصل على الأيقونة من القاموس
-
+        pygame.draw.rect(screen, bg_color, button_rect, border_radius=5)
+        icon_surface = icons.get(tool)
         if icon_surface:
-            # حساب موقع لرسم الأيقونة في منتصف الزر
             icon_rect = icon_surface.get_rect(center=button_rect.center)
-            screen.blit(icon_surface, icon_rect) # رسم الأيقونة
+            screen.blit(icon_surface, icon_rect)
         else:
-            # (احتياطي) إذا لم يتم تحميل الأيقونة، ارسم اسم الأداة كنص
             tool_text = font.render(tool, True, WHITE)
             text_rect = tool_text.get_rect(center=button_rect.center)
             screen.blit(tool_text, text_rect)
 
         y_offset += button_height + button_padding
 
-        # إضافة حقل إدخال تحت زر الباب والنافذة (كما كان)
         if tool == "DOOR":
             input_rect = pygame.Rect(10, y_offset, SIDEBAR_WIDTH - 20, input_height)
             INPUT_RECTS['door'] = input_rect
@@ -207,8 +190,6 @@ def draw_sidebar(selected_tool, current_input_values, active_input_field):
             input_text_surf = input_font.render("W: " + current_input_values['window'] + " m", True, BLACK)
             screen.blit(input_text_surf, (input_rect.x + 5, input_rect.y + 5))
             y_offset += input_height + button_padding
-# ***** نهاية تعديل draw_sidebar *****
-
 
 def calculate_distance_m(p1_m, p2_m):
     if p1_m is None or p2_m is None: return 0.0
@@ -442,12 +423,62 @@ def draw_ruler(screen, p1_m, p2_m, current_mouse_m, snapped_indicator_m):
          snap_screen = world_m_to_screen(snapped_indicator_m)
          pygame.draw.circle(screen, RULER_COLOR, snap_screen, 5, 1)
 
-# --- (حلقة اللعبة الرئيسية) ---
+def save_all_data():
+    if len(elements) == 0 and len(measurements) == 0:
+        print("لا توجد بيانات للحفظ!")
+        return
+    
+    root = tk.Tk()
+    root.withdraw()
+    
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".json",
+        filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")],
+        title="اختر مكان حفظ البيانات"
+    )
+    
+    if not file_path:
+        print("تم إلغاء الحفظ")
+        return
+    
+    try:
+        # تجميع بيانات الجدران
+        walls_data = []
+        for elem in elements:
+            if elem['type'] == 'wall':
+                walls_data.append({
+                    'start_m': list(elem['start_m']),
+                    'end_m': list(elem['end_m']),
+                    'length_m': elem['length_m']
+                })
+        
+        # تجميع بيانات القياسات
+        measures_data = []
+        for m in measurements:
+            measures_data.append({
+                'point1_m': list(m["point1"]),
+                'point2_m': list(m["point2"]),
+                'distance_m': m["distance"]
+            })
+        
+        # دمج البيانات في ملف واحد
+        combined_data = {
+            'walls': walls_data,
+            'measurements': measures_data
+        }
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(combined_data, f, indent=4, ensure_ascii=False)
+            print(f"تم الحفظ في: {file_path}")
+    
+    except Exception as e:
+        print(f"خطأ أثناء الحفظ: {e}")
+
+# --- حلقة اللعبة الرئيسية ---
 while running:
     mouse_pos = pygame.mouse.get_pos()
     mouse_pos_m = screen_to_world_m(mouse_pos)
 
-    # --- (معالجة الأحداث) ---
     ruler_snapped_point_m = None
     if current_tool == "MEASURE":
         snap_tolerance_pixels = 10
@@ -494,8 +525,11 @@ while running:
                                 if old_tool == "MEASURE" and current_tool != "MEASURE":
                                     ruler_point1_m = None
                                     ruler_point2_m = None
+                                elif current_tool == "SAVE":
+                                    save_all_data()
+                                    current_tool = None
                                 break
-                else: # النقرة في منطقة الرسم
+                else:
                      if active_input is not None: active_input = None
 
                 if not clicked_sidebar:
@@ -504,7 +538,7 @@ while running:
                         start_pos_m = mouse_pos_m
 
                     elif current_tool == "DOOR" or current_tool == "WINDOW":
-                        width_m = 0.1 # قيمة افتراضية صغيرة في حالة الخطأ
+                        width_m = 0.1
                         input_key = 'door' if current_tool == "DOOR" else 'window'
                         try:
                             width_m_input = float(input_values[input_key])
@@ -559,6 +593,14 @@ while running:
                             ruler_point2_m = None
                         else:
                             ruler_point2_m = click_pos_m
+                            distance = calculate_distance_m(ruler_point1_m, ruler_point2_m)
+                            measurements.append({
+                                "point1": ruler_point1_m,
+                                "point2": ruler_point2_m,
+                                "distance": distance
+                            })
+                            ruler_point1_m = None
+                            ruler_point2_m = None
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:
@@ -600,7 +642,7 @@ while running:
                     print("تم التراجع عن الإجراء الأخير.")
                 else: print("لا يوجد شيء للتراجع عنه.")
 
-    # --- (دورة الرسم) ---
+    # --- رسم الواجهة ---
     screen.fill(WHITE)
     drawing_area_rect = pygame.Rect(SIDEBAR_WIDTH, 0, DRAWING_AREA_WIDTH, SCREEN_HEIGHT)
     screen.set_clip(drawing_area_rect)
@@ -621,10 +663,10 @@ while running:
         draw_ruler(screen, ruler_point1_m, ruler_point2_m, mouse_pos_m, ruler_snapped_point_m)
 
     screen.set_clip(None)
-    draw_sidebar(current_tool, input_values, active_input) # استدعاء دالة الشريط الجانبي المعدلة
+    draw_sidebar(current_tool, input_values, active_input)
 
     pygame.display.flip()
     clock.tick(60)
 
-# --- (إنهاء Pygame) ---
+# --- إنهاء البرنامج ---
 pygame.quit()
